@@ -1,0 +1,1606 @@
+================================================================================
+     VENUE MAP INTEGRATION GUIDE - INTERACTIVE TICKET BUYING SYSTEM
+              Complete Documentation for Web Developers
+================================================================================
+
+TABLE OF CONTENTS
+-----------------
+1. OVERVIEW
+2. SVG MAP STRUCTURE
+3. DATA ATTRIBUTES EXPLAINED
+4. FRONTEND INTEGRATION (HTML/CSS/JavaScript)
+5. BACKEND INTEGRATION (Node.js/Python/PHP Examples)
+6. DATABASE SCHEMA
+7. COMPLETE TICKET BUYING FLOW
+8. API ENDPOINTS TO CREATE
+9. STEP-BY-STEP INTEGRATION
+10. CODE EXAMPLES
+11. TROUBLESHOOTING
+
+================================================================================
+1. OVERVIEW
+================================================================================
+
+This system generates interactive SVG venue maps with embedded ticket data.
+Each section in the SVG contains data attributes with:
+  - Section ID
+  - Number of rows
+  - Seats per row
+  - Pricing information
+  - Availability status
+
+The SVGs are designed to work like GoTickets.com - users click on a section
+to see available seats and purchase tickets.
+
+WORKFLOW:
+  User visits event page → Sees venue map → Clicks section → 
+  Sees available seats → Selects seats → Adds to cart → Checkout
+
+================================================================================
+2. SVG MAP STRUCTURE
+================================================================================
+
+Each exported SVG file contains:
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  <?xml version="1.0" encoding="UTF-8"?>                                     │
+│  <svg viewBox="0 0 1000 800" xmlns="http://www.w3.org/2000/svg">           │
+│                                                                             │
+│    <!-- Section Groups - Each clickable area -->                           │
+│    <g class="interactive-section"                                           │
+│       data-section-id="101"                                                 │
+│       data-rows="15"                                                        │
+│       data-seats-per-row="20"                                               │
+│       data-total-seats="300"                                                │
+│       data-price-min="45.00"                                                │
+│       data-price-max="120.00"                                               │
+│       data-current-price="89.99"                                            │
+│       data-available="true"                                                 │
+│       onclick="showSectionInfo(evt)">                                       │
+│                                                                             │
+│       <title>Section 101 | 15 rows × 20 seats | $89.99</title>             │
+│       <path d="M100,200 L200,200 L200,300..." fill="#3498db"/>             │
+│    </g>                                                                     │
+│                                                                             │
+│    <!-- Info Panel for displaying clicked section details -->              │
+│    <g id="info-panel">...</g>                                               │
+│                                                                             │
+│    <!-- Embedded JavaScript for basic interaction -->                      │
+│    <script type="text/javascript">...</script>                              │
+│                                                                             │
+│  </svg>                                                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+3. DATA ATTRIBUTES EXPLAINED
+================================================================================
+
+Each section <g> element has these data attributes:
+
+ATTRIBUTE               TYPE      DESCRIPTION
+─────────────────────────────────────────────────────────────────────────────
+data-section-id         string    Unique identifier for the section
+                                  Examples: "101", "A", "Floor", "VIP-Box-1"
+
+data-rows               integer   Number of rows in this section
+                                  Example: 15
+
+data-seats-per-row      integer   Number of seats in each row
+                                  Example: 20
+
+data-total-seats        integer   Total capacity (rows × seats-per-row)
+                                  Example: 300
+
+data-price-min          decimal   Minimum ticket price for this section
+                                  Example: 45.00
+
+data-price-max          decimal   Maximum ticket price for this section
+                                  Example: 120.00
+
+data-current-price      decimal   Current/base ticket price
+                                  Example: 89.99
+
+data-available          boolean   Whether section has available tickets
+                                  Values: "true" or "false"
+
+================================================================================
+4. FRONTEND INTEGRATION (HTML/CSS/JavaScript)
+================================================================================
+
+STEP 1: EMBED THE SVG IN YOUR HTML
+──────────────────────────────────
+
+Option A - Inline SVG (RECOMMENDED for interaction):
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Select Your Seats - Madison Square Garden</title>
+    <link rel="stylesheet" href="venue-map.css">
+</head>
+<body>
+    <div class="event-header">
+        <h1>Taylor Swift - Eras Tour</h1>
+        <p>Madison Square Garden | March 15, 2026 | 8:00 PM</p>
+    </div>
+    
+    <div class="venue-container">
+        <!-- Paste your SVG content directly here -->
+        <div id="venue-map">
+            <!-- SVG CONTENT GOES HERE -->
+        </div>
+        
+        <!-- Section Details Panel -->
+        <div id="section-details" class="hidden">
+            <h2>Section <span id="selected-section-id"></span></h2>
+            <p>Price: $<span id="section-price"></span></p>
+            <p>Available: <span id="seats-available"></span> seats</p>
+            <button id="view-seats-btn">View Available Seats</button>
+        </div>
+    </div>
+    
+    <!-- Seat Selection Modal -->
+    <div id="seat-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Select Seats - Section <span id="modal-section-id"></span></h2>
+            <div id="seat-grid"></div>
+            <div id="cart-summary">
+                <p>Selected: <span id="selected-count">0</span> seats</p>
+                <p>Total: $<span id="total-price">0.00</span></p>
+                <button id="add-to-cart-btn">Add to Cart</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="venue-interaction.js"></script>
+</body>
+</html>
+```
+
+Option B - Using <object> tag:
+```html
+<object id="venue-svg" type="image/svg+xml" data="venue_map.svg"></object>
+```
+
+Option C - Using <iframe>:
+```html
+<iframe id="venue-svg" src="venue_map.svg"></iframe>
+```
+
+
+STEP 2: CSS STYLING
+───────────────────
+
+```css
+/* venue-map.css */
+
+/* Container */
+.venue-container {
+    display: flex;
+    gap: 20px;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+#venue-map {
+    flex: 1;
+    background: #1a1a2e;
+    border-radius: 12px;
+    padding: 20px;
+}
+
+#venue-map svg {
+    width: 100%;
+    height: auto;
+    max-height: 70vh;
+}
+
+/* Section hover effects */
+#venue-map svg g[data-section-id] {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+#venue-map svg g[data-section-id]:hover {
+    filter: brightness(1.3);
+    transform: scale(1.02);
+}
+
+#venue-map svg g[data-section-id].selected {
+    stroke: #FFD700;
+    stroke-width: 3px;
+}
+
+/* Unavailable sections */
+#venue-map svg g[data-available="false"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Section Details Panel */
+#section-details {
+    width: 300px;
+    background: #2b2b2b;
+    border-radius: 12px;
+    padding: 20px;
+    color: white;
+}
+
+#section-details.hidden {
+    display: none;
+}
+
+#view-seats-btn {
+    width: 100%;
+    padding: 15px;
+    background: #4A90D9;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    margin-top: 15px;
+}
+
+#view-seats-btn:hover {
+    background: #357ABD;
+}
+
+/* Seat Selection Modal */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal-content {
+    background: #2b2b2b;
+    border-radius: 12px;
+    padding: 30px;
+    max-width: 800px;
+    max-height: 80vh;
+    overflow-y: auto;
+    color: white;
+}
+
+/* Seat Grid */
+#seat-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin: 20px 0;
+}
+
+.seat-row {
+    display: flex;
+    justify-content: center;
+    gap: 5px;
+}
+
+.seat {
+    width: 30px;
+    height: 30px;
+    border-radius: 5px;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 10px;
+    transition: all 0.2s;
+}
+
+.seat.available {
+    background: #27ae60;
+}
+
+.seat.available:hover {
+    background: #2ecc71;
+    transform: scale(1.1);
+}
+
+.seat.selected {
+    background: #FFD700;
+    color: black;
+}
+
+.seat.sold {
+    background: #555;
+    cursor: not-allowed;
+}
+
+.seat.reserved {
+    background: #e74c3c;
+    cursor: not-allowed;
+}
+
+/* Price color coding */
+.seat.price-low { background: #27ae60; }
+.seat.price-mid { background: #3498db; }
+.seat.price-high { background: #f39c12; }
+.seat.price-premium { background: #e74c3c; }
+```
+
+
+STEP 3: JAVASCRIPT INTERACTION
+──────────────────────────────
+
+```javascript
+// venue-interaction.js
+
+// Configuration
+const API_BASE_URL = 'https://your-api.com/api/v1';
+const EVENT_ID = 'event_12345';  // Get from page context
+
+// State
+let selectedSection = null;
+let selectedSeats = [];
+let sectionData = {};
+
+// Initialize when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    initializeVenueMap();
+});
+
+function initializeVenueMap() {
+    // Get all section groups from SVG
+    const sections = document.querySelectorAll('#venue-map svg g[data-section-id]');
+    
+    sections.forEach(section => {
+        // Remove default onclick (we'll handle it ourselves)
+        section.removeAttribute('onclick');
+        
+        // Store section data
+        const sectionId = section.getAttribute('data-section-id');
+        sectionData[sectionId] = {
+            id: sectionId,
+            rows: parseInt(section.getAttribute('data-rows')),
+            seatsPerRow: parseInt(section.getAttribute('data-seats-per-row')),
+            totalSeats: parseInt(section.getAttribute('data-total-seats')),
+            priceMin: parseFloat(section.getAttribute('data-price-min')),
+            priceMax: parseFloat(section.getAttribute('data-price-max')),
+            currentPrice: parseFloat(section.getAttribute('data-current-price')),
+            available: section.getAttribute('data-available') === 'true'
+        };
+        
+        // Add click handler
+        section.addEventListener('click', function(e) {
+            handleSectionClick(sectionId);
+        });
+    });
+    
+    // Fetch real-time availability from server
+    fetchAvailability();
+}
+
+async function fetchAvailability() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/events/${EVENT_ID}/availability`);
+        const data = await response.json();
+        
+        // Update SVG sections with real availability
+        data.sections.forEach(section => {
+            const svgSection = document.querySelector(
+                `#venue-map svg g[data-section-id="${section.id}"]`
+            );
+            if (svgSection) {
+                svgSection.setAttribute('data-available', section.availableSeats > 0);
+                // Update color based on availability
+                const paths = svgSection.querySelectorAll('path, polygon, rect');
+                paths.forEach(path => {
+                    if (section.availableSeats === 0) {
+                        path.style.fill = '#555555';
+                    }
+                });
+            }
+        });
+    } catch (error) {
+        console.error('Failed to fetch availability:', error);
+    }
+}
+
+function handleSectionClick(sectionId) {
+    const section = sectionData[sectionId];
+    
+    if (!section.available) {
+        alert('Sorry, this section is sold out.');
+        return;
+    }
+    
+    // Update selected section
+    selectedSection = sectionId;
+    
+    // Highlight selected section
+    document.querySelectorAll('#venue-map svg g[data-section-id]').forEach(g => {
+        g.classList.remove('selected');
+    });
+    document.querySelector(`#venue-map svg g[data-section-id="${sectionId}"]`)
+        .classList.add('selected');
+    
+    // Show section details
+    showSectionDetails(section);
+}
+
+function showSectionDetails(section) {
+    document.getElementById('selected-section-id').textContent = section.id;
+    document.getElementById('section-price').textContent = section.currentPrice.toFixed(2);
+    document.getElementById('seats-available').textContent = section.totalSeats;
+    
+    document.getElementById('section-details').classList.remove('hidden');
+    
+    // Setup view seats button
+    document.getElementById('view-seats-btn').onclick = function() {
+        openSeatModal(section.id);
+    };
+}
+
+async function openSeatModal(sectionId) {
+    const section = sectionData[sectionId];
+    
+    document.getElementById('modal-section-id').textContent = sectionId;
+    
+    // Fetch seat availability from server
+    try {
+        const response = await fetch(
+            `${API_BASE_URL}/events/${EVENT_ID}/sections/${sectionId}/seats`
+        );
+        const seats = await response.json();
+        
+        renderSeatGrid(section, seats);
+        document.getElementById('seat-modal').classList.remove('hidden');
+        
+    } catch (error) {
+        console.error('Failed to fetch seats:', error);
+        // Fallback: render based on SVG data
+        renderSeatGridFallback(section);
+        document.getElementById('seat-modal').classList.remove('hidden');
+    }
+}
+
+function renderSeatGrid(section, seatsData) {
+    const grid = document.getElementById('seat-grid');
+    grid.innerHTML = '';
+    
+    // Create seat map from server data
+    const seatMap = {};
+    seatsData.forEach(seat => {
+        const key = `${seat.row}-${seat.seat}`;
+        seatMap[key] = seat;
+    });
+    
+    // Render rows
+    for (let row = 1; row <= section.rows; row++) {
+        const rowDiv = document.createElement('div');
+        rowDiv.className = 'seat-row';
+        
+        // Row label
+        const rowLabel = document.createElement('span');
+        rowLabel.className = 'row-label';
+        rowLabel.textContent = `Row ${row}`;
+        rowDiv.appendChild(rowLabel);
+        
+        // Seats
+        for (let seat = 1; seat <= section.seatsPerRow; seat++) {
+            const seatDiv = document.createElement('div');
+            seatDiv.className = 'seat';
+            seatDiv.textContent = seat;
+            
+            const key = `${row}-${seat}`;
+            const seatInfo = seatMap[key] || { status: 'available', price: section.currentPrice };
+            
+            seatDiv.classList.add(seatInfo.status);
+            seatDiv.setAttribute('data-row', row);
+            seatDiv.setAttribute('data-seat', seat);
+            seatDiv.setAttribute('data-price', seatInfo.price);
+            
+            if (seatInfo.status === 'available') {
+                seatDiv.addEventListener('click', function() {
+                    toggleSeatSelection(this, row, seat, seatInfo.price);
+                });
+            }
+            
+            rowDiv.appendChild(seatDiv);
+        }
+        
+        grid.appendChild(rowDiv);
+    }
+}
+
+function renderSeatGridFallback(section) {
+    // Fallback when no server data - assume all available
+    const grid = document.getElementById('seat-grid');
+    grid.innerHTML = '';
+    
+    for (let row = 1; row <= section.rows; row++) {
+        const rowDiv = document.createElement('div');
+        rowDiv.className = 'seat-row';
+        
+        const rowLabel = document.createElement('span');
+        rowLabel.className = 'row-label';
+        rowLabel.textContent = `Row ${row}`;
+        rowDiv.appendChild(rowLabel);
+        
+        for (let seat = 1; seat <= section.seatsPerRow; seat++) {
+            const seatDiv = document.createElement('div');
+            seatDiv.className = 'seat available';
+            seatDiv.textContent = seat;
+            seatDiv.setAttribute('data-row', row);
+            seatDiv.setAttribute('data-seat', seat);
+            seatDiv.setAttribute('data-price', section.currentPrice);
+            
+            seatDiv.addEventListener('click', function() {
+                toggleSeatSelection(this, row, seat, section.currentPrice);
+            });
+            
+            rowDiv.appendChild(seatDiv);
+        }
+        
+        grid.appendChild(rowDiv);
+    }
+}
+
+function toggleSeatSelection(seatElement, row, seat, price) {
+    const seatKey = `${selectedSection}-${row}-${seat}`;
+    
+    if (seatElement.classList.contains('selected')) {
+        // Deselect
+        seatElement.classList.remove('selected');
+        seatElement.classList.add('available');
+        selectedSeats = selectedSeats.filter(s => s.key !== seatKey);
+    } else {
+        // Select
+        seatElement.classList.remove('available');
+        seatElement.classList.add('selected');
+        selectedSeats.push({
+            key: seatKey,
+            section: selectedSection,
+            row: row,
+            seat: seat,
+            price: price
+        });
+    }
+    
+    updateCartSummary();
+}
+
+function updateCartSummary() {
+    const count = selectedSeats.length;
+    const total = selectedSeats.reduce((sum, seat) => sum + seat.price, 0);
+    
+    document.getElementById('selected-count').textContent = count;
+    document.getElementById('total-price').textContent = total.toFixed(2);
+}
+
+// Add to Cart
+document.getElementById('add-to-cart-btn').addEventListener('click', async function() {
+    if (selectedSeats.length === 0) {
+        alert('Please select at least one seat.');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/cart/add`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${getUserToken()}`
+            },
+            body: JSON.stringify({
+                eventId: EVENT_ID,
+                seats: selectedSeats.map(s => ({
+                    sectionId: s.section,
+                    row: s.row,
+                    seat: s.seat,
+                    price: s.price
+                }))
+            })
+        });
+        
+        if (response.ok) {
+            alert('Seats added to cart!');
+            window.location.href = '/cart';
+        } else {
+            const error = await response.json();
+            alert(`Error: ${error.message}`);
+        }
+    } catch (error) {
+        console.error('Failed to add to cart:', error);
+        alert('Failed to add seats to cart. Please try again.');
+    }
+});
+
+// Close modal
+document.querySelector('.modal .close').addEventListener('click', function() {
+    document.getElementById('seat-modal').classList.add('hidden');
+    selectedSeats = [];
+    updateCartSummary();
+});
+
+function getUserToken() {
+    // Get user authentication token from your auth system
+    return localStorage.getItem('auth_token') || '';
+}
+```
+
+================================================================================
+5. BACKEND INTEGRATION
+================================================================================
+
+You need these API endpoints. Examples in multiple languages:
+
+─────────────────────────────────────────────────────────────────────────────
+NODE.JS (Express) EXAMPLE
+─────────────────────────────────────────────────────────────────────────────
+
+```javascript
+// server.js
+const express = require('express');
+const app = express();
+const mongoose = require('mongoose');
+
+app.use(express.json());
+
+// ===== MODELS =====
+
+const SeatSchema = new mongoose.Schema({
+    eventId: { type: String, required: true },
+    sectionId: { type: String, required: true },
+    row: { type: Number, required: true },
+    seat: { type: Number, required: true },
+    price: { type: Number, required: true },
+    status: { 
+        type: String, 
+        enum: ['available', 'reserved', 'sold'],
+        default: 'available'
+    },
+    reservedBy: String,
+    reservedUntil: Date,
+    soldTo: String,
+    orderId: String
+});
+
+SeatSchema.index({ eventId: 1, sectionId: 1, row: 1, seat: 1 }, { unique: true });
+
+const Seat = mongoose.model('Seat', SeatSchema);
+
+const EventSchema = new mongoose.Schema({
+    eventId: { type: String, required: true, unique: true },
+    name: String,
+    venue: String,
+    date: Date,
+    svgMapPath: String,
+    sections: [{
+        sectionId: String,
+        name: String,
+        rows: Number,
+        seatsPerRow: Number,
+        basePrice: Number,
+        priceMin: Number,
+        priceMax: Number
+    }]
+});
+
+const Event = mongoose.model('Event', EventSchema);
+
+// ===== API ENDPOINTS =====
+
+// GET /api/v1/events/:eventId/availability
+// Returns availability summary for all sections
+app.get('/api/v1/events/:eventId/availability', async (req, res) => {
+    try {
+        const { eventId } = req.params;
+        
+        // Aggregate seat counts by section
+        const availability = await Seat.aggregate([
+            { $match: { eventId: eventId } },
+            { $group: {
+                _id: '$sectionId',
+                totalSeats: { $sum: 1 },
+                availableSeats: { 
+                    $sum: { $cond: [{ $eq: ['$status', 'available'] }, 1, 0] }
+                },
+                soldSeats: {
+                    $sum: { $cond: [{ $eq: ['$status', 'sold'] }, 1, 0] }
+                },
+                minPrice: { $min: '$price' },
+                maxPrice: { $max: '$price' }
+            }}
+        ]);
+        
+        res.json({
+            eventId: eventId,
+            sections: availability.map(a => ({
+                id: a._id,
+                totalSeats: a.totalSeats,
+                availableSeats: a.availableSeats,
+                soldSeats: a.soldSeats,
+                minPrice: a.minPrice,
+                maxPrice: a.maxPrice
+            }))
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/v1/events/:eventId/sections/:sectionId/seats
+// Returns individual seat data for a section
+app.get('/api/v1/events/:eventId/sections/:sectionId/seats', async (req, res) => {
+    try {
+        const { eventId, sectionId } = req.params;
+        
+        const seats = await Seat.find({ 
+            eventId: eventId, 
+            sectionId: sectionId 
+        }).select('row seat price status -_id');
+        
+        res.json(seats);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/v1/cart/add
+// Reserve seats and add to cart
+app.post('/api/v1/cart/add', authenticateUser, async (req, res) => {
+    try {
+        const { eventId, seats } = req.body;
+        const userId = req.user.id;
+        
+        // Start a transaction for atomic operations
+        const session = await mongoose.startSession();
+        session.startTransaction();
+        
+        try {
+            const reservedSeats = [];
+            const reserveUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 min hold
+            
+            for (const seatReq of seats) {
+                // Try to reserve the seat
+                const result = await Seat.findOneAndUpdate(
+                    {
+                        eventId: eventId,
+                        sectionId: seatReq.sectionId,
+                        row: seatReq.row,
+                        seat: seatReq.seat,
+                        status: 'available'
+                    },
+                    {
+                        $set: {
+                            status: 'reserved',
+                            reservedBy: userId,
+                            reservedUntil: reserveUntil
+                        }
+                    },
+                    { session: session, new: true }
+                );
+                
+                if (!result) {
+                    throw new Error(
+                        `Seat ${seatReq.sectionId}-${seatReq.row}-${seatReq.seat} is no longer available`
+                    );
+                }
+                
+                reservedSeats.push(result);
+            }
+            
+            await session.commitTransaction();
+            
+            // Add to user's cart (implement your cart logic)
+            await addToCart(userId, eventId, reservedSeats);
+            
+            res.json({
+                success: true,
+                message: `${reservedSeats.length} seats reserved`,
+                expiresAt: reserveUntil,
+                seats: reservedSeats
+            });
+            
+        } catch (error) {
+            await session.abortTransaction();
+            throw error;
+        } finally {
+            session.endSession();
+        }
+        
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+// POST /api/v1/checkout
+// Complete purchase
+app.post('/api/v1/checkout', authenticateUser, async (req, res) => {
+    try {
+        const { paymentMethod, cartId } = req.body;
+        const userId = req.user.id;
+        
+        // Get cart items
+        const cart = await getCart(userId);
+        
+        // Process payment (integrate with Stripe, etc.)
+        const paymentResult = await processPayment(paymentMethod, cart.total);
+        
+        if (paymentResult.success) {
+            // Update seats to sold
+            const orderId = generateOrderId();
+            
+            for (const item of cart.items) {
+                await Seat.updateOne(
+                    {
+                        eventId: item.eventId,
+                        sectionId: item.sectionId,
+                        row: item.row,
+                        seat: item.seat,
+                        reservedBy: userId
+                    },
+                    {
+                        $set: {
+                            status: 'sold',
+                            soldTo: userId,
+                            orderId: orderId
+                        },
+                        $unset: {
+                            reservedBy: 1,
+                            reservedUntil: 1
+                        }
+                    }
+                );
+            }
+            
+            // Generate tickets
+            const tickets = await generateTickets(orderId, cart.items);
+            
+            // Clear cart
+            await clearCart(userId);
+            
+            res.json({
+                success: true,
+                orderId: orderId,
+                tickets: tickets
+            });
+        } else {
+            // Release reserved seats
+            await releaseReservation(userId);
+            res.status(400).json({ error: 'Payment failed' });
+        }
+        
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Middleware to authenticate user
+function authenticateUser(req, res, next) {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    // Implement your JWT/session verification
+    try {
+        req.user = verifyToken(token);
+        next();
+    } catch {
+        res.status(401).json({ error: 'Unauthorized' });
+    }
+}
+
+// Background job: Release expired reservations
+setInterval(async () => {
+    await Seat.updateMany(
+        {
+            status: 'reserved',
+            reservedUntil: { $lt: new Date() }
+        },
+        {
+            $set: { status: 'available' },
+            $unset: { reservedBy: 1, reservedUntil: 1 }
+        }
+    );
+}, 60000); // Run every minute
+
+app.listen(3000, () => console.log('Server running on port 3000'));
+```
+
+─────────────────────────────────────────────────────────────────────────────
+PYTHON (Flask) EXAMPLE
+─────────────────────────────────────────────────────────────────────────────
+
+```python
+# app.py
+from flask import Flask, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime, timedelta
+import uuid
+
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://user:pass@localhost/tickets'
+db = SQLAlchemy(app)
+
+# Models
+class Seat(db.Model):
+    __tablename__ = 'seats'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    event_id = db.Column(db.String(50), nullable=False)
+    section_id = db.Column(db.String(50), nullable=False)
+    row = db.Column(db.Integer, nullable=False)
+    seat = db.Column(db.Integer, nullable=False)
+    price = db.Column(db.Numeric(10, 2), nullable=False)
+    status = db.Column(db.String(20), default='available')  # available, reserved, sold
+    reserved_by = db.Column(db.String(50))
+    reserved_until = db.Column(db.DateTime)
+    sold_to = db.Column(db.String(50))
+    order_id = db.Column(db.String(50))
+    
+    __table_args__ = (
+        db.UniqueConstraint('event_id', 'section_id', 'row', 'seat'),
+    )
+
+# API Endpoints
+@app.route('/api/v1/events/<event_id>/availability')
+def get_availability(event_id):
+    results = db.session.query(
+        Seat.section_id,
+        db.func.count(Seat.id).label('total_seats'),
+        db.func.sum(db.case((Seat.status == 'available', 1), else_=0)).label('available_seats'),
+        db.func.min(Seat.price).label('min_price'),
+        db.func.max(Seat.price).label('max_price')
+    ).filter(
+        Seat.event_id == event_id
+    ).group_by(Seat.section_id).all()
+    
+    return jsonify({
+        'eventId': event_id,
+        'sections': [{
+            'id': r.section_id,
+            'totalSeats': r.total_seats,
+            'availableSeats': r.available_seats or 0,
+            'minPrice': float(r.min_price) if r.min_price else 0,
+            'maxPrice': float(r.max_price) if r.max_price else 0
+        } for r in results]
+    })
+
+@app.route('/api/v1/events/<event_id>/sections/<section_id>/seats')
+def get_section_seats(event_id, section_id):
+    seats = Seat.query.filter_by(
+        event_id=event_id,
+        section_id=section_id
+    ).all()
+    
+    return jsonify([{
+        'row': s.row,
+        'seat': s.seat,
+        'price': float(s.price),
+        'status': s.status
+    } for s in seats])
+
+@app.route('/api/v1/cart/add', methods=['POST'])
+@require_auth
+def add_to_cart():
+    data = request.json
+    user_id = request.user_id
+    event_id = data['eventId']
+    seat_requests = data['seats']
+    
+    reserve_until = datetime.utcnow() + timedelta(minutes=15)
+    reserved_seats = []
+    
+    try:
+        for seat_req in seat_requests:
+            seat = Seat.query.filter_by(
+                event_id=event_id,
+                section_id=seat_req['sectionId'],
+                row=seat_req['row'],
+                seat=seat_req['seat'],
+                status='available'
+            ).with_for_update().first()
+            
+            if not seat:
+                db.session.rollback()
+                return jsonify({
+                    'error': f"Seat {seat_req['sectionId']}-{seat_req['row']}-{seat_req['seat']} unavailable"
+                }), 400
+            
+            seat.status = 'reserved'
+            seat.reserved_by = user_id
+            seat.reserved_until = reserve_until
+            reserved_seats.append(seat)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'{len(reserved_seats)} seats reserved',
+            'expiresAt': reserve_until.isoformat()
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True)
+```
+
+================================================================================
+6. DATABASE SCHEMA
+================================================================================
+
+POSTGRESQL SCHEMA:
+─────────────────────────────────────────────────────────────────────────────
+
+```sql
+-- Events table
+CREATE TABLE events (
+    id SERIAL PRIMARY KEY,
+    event_id VARCHAR(50) UNIQUE NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    venue_name VARCHAR(255),
+    venue_address TEXT,
+    event_date TIMESTAMP NOT NULL,
+    doors_open TIMESTAMP,
+    svg_map_url TEXT,
+    status VARCHAR(20) DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Sections table (defines venue layout)
+CREATE TABLE sections (
+    id SERIAL PRIMARY KEY,
+    event_id VARCHAR(50) REFERENCES events(event_id),
+    section_id VARCHAR(50) NOT NULL,
+    section_name VARCHAR(100),
+    rows INTEGER NOT NULL,
+    seats_per_row INTEGER NOT NULL,
+    base_price DECIMAL(10,2) NOT NULL,
+    price_min DECIMAL(10,2),
+    price_max DECIMAL(10,2),
+    section_type VARCHAR(50), -- 'floor', 'lower', 'upper', 'vip', 'box'
+    UNIQUE(event_id, section_id)
+);
+
+-- Individual seats table
+CREATE TABLE seats (
+    id SERIAL PRIMARY KEY,
+    event_id VARCHAR(50) NOT NULL,
+    section_id VARCHAR(50) NOT NULL,
+    row_number INTEGER NOT NULL,
+    seat_number INTEGER NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+    status VARCHAR(20) DEFAULT 'available', -- available, reserved, sold, blocked
+    reserved_by VARCHAR(50),
+    reserved_until TIMESTAMP,
+    sold_to VARCHAR(50),
+    order_id VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(event_id, section_id, row_number, seat_number),
+    FOREIGN KEY (event_id, section_id) REFERENCES sections(event_id, section_id)
+);
+
+-- Create index for fast lookups
+CREATE INDEX idx_seats_event_section ON seats(event_id, section_id);
+CREATE INDEX idx_seats_status ON seats(status);
+CREATE INDEX idx_seats_reserved_until ON seats(reserved_until) WHERE status = 'reserved';
+
+-- Orders table
+CREATE TABLE orders (
+    id SERIAL PRIMARY KEY,
+    order_id VARCHAR(50) UNIQUE NOT NULL,
+    user_id VARCHAR(50) NOT NULL,
+    event_id VARCHAR(50) REFERENCES events(event_id),
+    total_amount DECIMAL(10,2) NOT NULL,
+    fees DECIMAL(10,2) DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'pending', -- pending, completed, cancelled, refunded
+    payment_id VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Order items (individual tickets in an order)
+CREATE TABLE order_items (
+    id SERIAL PRIMARY KEY,
+    order_id VARCHAR(50) REFERENCES orders(order_id),
+    seat_id INTEGER REFERENCES seats(id),
+    price DECIMAL(10,2) NOT NULL,
+    ticket_code VARCHAR(100) UNIQUE,
+    qr_code TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Users table (basic)
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    first_name VARCHAR(100),
+    last_name VARCHAR(100),
+    phone VARCHAR(20),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Shopping cart
+CREATE TABLE cart_items (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(50) NOT NULL,
+    seat_id INTEGER REFERENCES seats(id),
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL
+);
+```
+
+SCRIPT TO POPULATE SEATS FROM SVG DATA:
+─────────────────────────────────────────────────────────────────────────────
+
+```sql
+-- Example: Insert seats for a section
+-- Run this for each section in your SVG
+
+INSERT INTO sections (event_id, section_id, section_name, rows, seats_per_row, base_price)
+VALUES ('event_12345', '101', 'Section 101', 15, 20, 89.99);
+
+-- Generate individual seats
+INSERT INTO seats (event_id, section_id, row_number, seat_number, price)
+SELECT 
+    'event_12345',
+    '101',
+    row_num,
+    seat_num,
+    89.99 + (15 - row_num) * 5  -- Front rows cost more
+FROM 
+    generate_series(1, 15) AS row_num,
+    generate_series(1, 20) AS seat_num;
+```
+
+================================================================================
+7. COMPLETE TICKET BUYING FLOW
+================================================================================
+
+STEP-BY-STEP USER JOURNEY:
+─────────────────────────────────────────────────────────────────────────────
+
+1. USER LANDS ON EVENT PAGE
+   ├─ Server loads event data
+   ├─ SVG map is displayed
+   └─ JavaScript fetches real-time availability
+
+2. USER HOVERS OVER SECTIONS
+   ├─ CSS highlights the section
+   └─ Tooltip shows section name and price range
+
+3. USER CLICKS A SECTION
+   ├─ Check if section has available seats
+   ├─ If sold out → Show "Sold Out" message
+   ├─ If available → Show section details panel
+   └─ Highlight selected section on map
+
+4. USER CLICKS "VIEW SEATS"
+   ├─ API call: GET /events/{id}/sections/{sectionId}/seats
+   ├─ Server returns seat data with status
+   ├─ Render seat grid in modal
+   └─ Color code: Available(green), Sold(gray), Reserved(red)
+
+5. USER SELECTS SEATS
+   ├─ Click seat to select (turns gold)
+   ├─ Click again to deselect
+   ├─ Update cart summary (count, total)
+   └─ Max seats limit enforced (e.g., 8 per transaction)
+
+6. USER CLICKS "ADD TO CART"
+   ├─ API call: POST /cart/add with selected seats
+   ├─ Server starts DB transaction
+   ├─ For each seat:
+   │   ├─ Check seat is still available
+   │   ├─ Update status to 'reserved'
+   │   └─ Set reserved_by and reserved_until (15 min)
+   ├─ If any seat unavailable → Rollback, show error
+   ├─ If all seats reserved → Commit, redirect to cart
+   └─ Start countdown timer for reservation expiry
+
+7. USER VIEWS CART
+   ├─ Show reserved seats with countdown
+   ├─ Allow remove individual seats
+   ├─ Show subtotal, fees, total
+   └─ Proceed to checkout button
+
+8. USER CHECKS OUT
+   ├─ Enter/confirm billing info
+   ├─ Select payment method
+   ├─ API call: POST /checkout
+   ├─ Server processes payment
+   ├─ If payment fails → Keep reservation, show error
+   ├─ If payment succeeds:
+   │   ├─ Update seats to 'sold'
+   │   ├─ Create order record
+   │   ├─ Generate tickets with QR codes
+   │   └─ Send confirmation email
+   └─ Show confirmation page with tickets
+
+9. BACKGROUND PROCESSES
+   ├─ Every minute: Release expired reservations
+   ├─ Update availability cache
+   └─ Send reminder emails for abandoned carts
+
+
+DATA FLOW DIAGRAM:
+─────────────────────────────────────────────────────────────────────────────
+
+   ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
+   │   Browser   │ ──── │   Server    │ ──── │  Database   │
+   │  (Frontend) │      │   (API)     │      │ (PostgreSQL)│
+   └─────────────┘      └─────────────┘      └─────────────┘
+         │                    │                    │
+         │  Load Event Page   │                    │
+         │ ─────────────────► │  Query Event       │
+         │                    │ ─────────────────► │
+         │                    │ ◄───────────────── │
+         │ ◄───────────────── │                    │
+         │                    │                    │
+         │  Fetch Availability│                    │
+         │ ─────────────────► │  Aggregate Seats   │
+         │                    │ ─────────────────► │
+         │                    │ ◄───────────────── │
+         │ ◄───────────────── │                    │
+         │                    │                    │
+         │  Get Section Seats │                    │
+         │ ─────────────────► │  Query Seats       │
+         │                    │ ─────────────────► │
+         │                    │ ◄───────────────── │
+         │ ◄───────────────── │                    │
+         │                    │                    │
+         │  Reserve Seats     │                    │
+         │ ─────────────────► │  Transaction:      │
+         │                    │  UPDATE seats      │
+         │                    │ ─────────────────► │
+         │                    │ ◄───────────────── │
+         │ ◄───────────────── │                    │
+         │                    │                    │
+         │  Checkout          │                    │
+         │ ─────────────────► │  Process Payment   │
+         │                    │ ─────────────────► │
+         │                    │  Create Order      │
+         │                    │ ─────────────────► │
+         │                    │ ◄───────────────── │
+         │ ◄───────────────── │                    │
+         │                    │                    │
+
+================================================================================
+8. API ENDPOINTS TO CREATE
+================================================================================
+
+REQUIRED ENDPOINTS:
+─────────────────────────────────────────────────────────────────────────────
+
+METHOD   ENDPOINT                                    DESCRIPTION
+────────────────────────────────────────────────────────────────────────────
+GET      /api/v1/events                             List all events
+GET      /api/v1/events/:eventId                    Get event details
+GET      /api/v1/events/:eventId/map                Get SVG map URL/content
+GET      /api/v1/events/:eventId/availability       Get section availability
+GET      /api/v1/events/:eventId/sections/:id/seats Get individual seats
+POST     /api/v1/cart/add                           Reserve seats, add to cart
+GET      /api/v1/cart                               Get user's cart
+DELETE   /api/v1/cart/items/:itemId                 Remove item from cart
+POST     /api/v1/checkout                           Process payment, create order
+GET      /api/v1/orders                             Get user's orders
+GET      /api/v1/orders/:orderId                    Get order details
+GET      /api/v1/orders/:orderId/tickets            Get tickets for order
+
+ADMIN ENDPOINTS:
+────────────────────────────────────────────────────────────────────────────
+POST     /api/v1/admin/events                       Create event
+PUT      /api/v1/admin/events/:eventId              Update event
+POST     /api/v1/admin/events/:eventId/sections     Add section
+POST     /api/v1/admin/events/:eventId/generate-seats  Generate seats from SVG
+PUT      /api/v1/admin/seats/:seatId                Update seat (price, status)
+POST     /api/v1/admin/events/:eventId/import-svg   Import SVG and create seats
+
+================================================================================
+9. STEP-BY-STEP INTEGRATION
+================================================================================
+
+PHASE 1: SETUP (Day 1-2)
+─────────────────────────────────────────────────────────────────────────────
+□ Set up database (PostgreSQL recommended)
+□ Create tables using schema above
+□ Set up backend framework (Node.js/Python/PHP)
+□ Implement user authentication
+□ Create basic API structure
+
+PHASE 2: SVG IMPORT (Day 3-4)
+─────────────────────────────────────────────────────────────────────────────
+□ Create admin endpoint to upload SVG
+□ Parse SVG to extract sections:
+  - Read data-section-id attributes
+  - Read data-rows, data-seats-per-row
+  - Read pricing data
+□ Auto-generate seats in database for each section
+□ Store SVG file for serving to frontend
+
+PHASE 3: AVAILABILITY API (Day 5)
+─────────────────────────────────────────────────────────────────────────────
+□ Implement GET /availability endpoint
+□ Implement GET /sections/:id/seats endpoint
+□ Add caching for availability (Redis recommended)
+□ Test with sample data
+
+PHASE 4: FRONTEND INTEGRATION (Day 6-8)
+─────────────────────────────────────────────────────────────────────────────
+□ Embed SVG in event page
+□ Add CSS styling
+□ Implement JavaScript interaction
+□ Connect to availability API
+□ Build seat selection modal
+□ Test section clicking and seat selection
+
+PHASE 5: CART & RESERVATION (Day 9-11)
+─────────────────────────────────────────────────────────────────────────────
+□ Implement POST /cart/add with seat locking
+□ Build cart page UI
+□ Add reservation timer
+□ Implement background job for releasing expired reservations
+□ Test concurrent seat selection (race conditions)
+
+PHASE 6: CHECKOUT (Day 12-14)
+─────────────────────────────────────────────────────────────────────────────
+□ Integrate payment gateway (Stripe/PayPal)
+□ Implement checkout endpoint
+□ Generate tickets with unique codes
+□ Send confirmation emails
+□ Build order confirmation page
+
+PHASE 7: TESTING & LAUNCH (Day 15-17)
+─────────────────────────────────────────────────────────────────────────────
+□ Load testing
+□ Security audit
+□ Mobile responsiveness
+□ Browser compatibility
+□ Deploy to production
+
+================================================================================
+10. CODE EXAMPLES
+================================================================================
+
+PARSING SVG TO EXTRACT SECTION DATA (Node.js):
+─────────────────────────────────────────────────────────────────────────────
+
+```javascript
+const { JSDOM } = require('jsdom');
+const fs = require('fs');
+
+async function parseSvgSections(svgPath) {
+    const svgContent = fs.readFileSync(svgPath, 'utf-8');
+    const dom = new JSDOM(svgContent, { contentType: 'image/svg+xml' });
+    const doc = dom.window.document;
+    
+    const sections = [];
+    const sectionGroups = doc.querySelectorAll('g[data-section-id]');
+    
+    sectionGroups.forEach(g => {
+        sections.push({
+            sectionId: g.getAttribute('data-section-id'),
+            rows: parseInt(g.getAttribute('data-rows')) || 10,
+            seatsPerRow: parseInt(g.getAttribute('data-seats-per-row')) || 20,
+            totalSeats: parseInt(g.getAttribute('data-total-seats')) || 200,
+            priceMin: parseFloat(g.getAttribute('data-price-min')) || 50,
+            priceMax: parseFloat(g.getAttribute('data-price-max')) || 200,
+            currentPrice: parseFloat(g.getAttribute('data-current-price')) || 100
+        });
+    });
+    
+    return sections;
+}
+
+async function generateSeatsFromSvg(eventId, svgPath) {
+    const sections = await parseSvgSections(svgPath);
+    
+    for (const section of sections) {
+        // Insert section
+        await db.query(`
+            INSERT INTO sections (event_id, section_id, rows, seats_per_row, base_price)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (event_id, section_id) DO UPDATE
+            SET rows = $3, seats_per_row = $4, base_price = $5
+        `, [eventId, section.sectionId, section.rows, section.seatsPerRow, section.currentPrice]);
+        
+        // Generate seats
+        for (let row = 1; row <= section.rows; row++) {
+            for (let seat = 1; seat <= section.seatsPerRow; seat++) {
+                // Price varies by row (front rows more expensive)
+                const rowMultiplier = 1 + (section.rows - row) * 0.05;
+                const price = Math.round(section.currentPrice * rowMultiplier * 100) / 100;
+                
+                await db.query(`
+                    INSERT INTO seats (event_id, section_id, row_number, seat_number, price)
+                    VALUES ($1, $2, $3, $4, $5)
+                    ON CONFLICT (event_id, section_id, row_number, seat_number) DO NOTHING
+                `, [eventId, section.sectionId, row, seat, price]);
+            }
+        }
+    }
+    
+    console.log(`Generated seats for ${sections.length} sections`);
+}
+```
+
+
+GENERATING QR CODE TICKETS:
+─────────────────────────────────────────────────────────────────────────────
+
+```javascript
+const QRCode = require('qrcode');
+const crypto = require('crypto');
+
+async function generateTicket(orderId, seat) {
+    // Create unique ticket code
+    const ticketCode = crypto.randomBytes(16).toString('hex').toUpperCase();
+    
+    // Data to encode in QR
+    const qrData = JSON.stringify({
+        code: ticketCode,
+        event: seat.event_id,
+        section: seat.section_id,
+        row: seat.row_number,
+        seat: seat.seat_number,
+        valid: true
+    });
+    
+    // Generate QR code as data URL
+    const qrCodeDataUrl = await QRCode.toDataURL(qrData, {
+        width: 300,
+        margin: 2,
+        color: { dark: '#000000', light: '#ffffff' }
+    });
+    
+    // Save to database
+    await db.query(`
+        INSERT INTO order_items (order_id, seat_id, price, ticket_code, qr_code)
+        VALUES ($1, $2, $3, $4, $5)
+    `, [orderId, seat.id, seat.price, ticketCode, qrCodeDataUrl]);
+    
+    return {
+        ticketCode,
+        qrCode: qrCodeDataUrl,
+        section: seat.section_id,
+        row: seat.row_number,
+        seat: seat.seat_number
+    };
+}
+```
+
+
+REAL-TIME AVAILABILITY UPDATE (WebSocket):
+─────────────────────────────────────────────────────────────────────────────
+
+```javascript
+// server.js - Add WebSocket for real-time updates
+const WebSocket = require('ws');
+const wss = new WebSocket.Server({ port: 8080 });
+
+// Store connections by event
+const eventConnections = new Map();
+
+wss.on('connection', (ws, req) => {
+    const eventId = req.url.split('/')[1];
+    
+    if (!eventConnections.has(eventId)) {
+        eventConnections.set(eventId, new Set());
+    }
+    eventConnections.get(eventId).add(ws);
+    
+    ws.on('close', () => {
+        eventConnections.get(eventId)?.delete(ws);
+    });
+});
+
+// Call this whenever seat status changes
+function broadcastAvailabilityUpdate(eventId, sectionId, availableSeats) {
+    const connections = eventConnections.get(eventId);
+    if (connections) {
+        const message = JSON.stringify({
+            type: 'availability_update',
+            sectionId: sectionId,
+            availableSeats: availableSeats
+        });
+        
+        connections.forEach(ws => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(message);
+            }
+        });
+    }
+}
+
+// client.js - Connect to WebSocket
+const ws = new WebSocket(`wss://your-server.com/${EVENT_ID}`);
+
+ws.onmessage = function(event) {
+    const data = JSON.parse(event.data);
+    
+    if (data.type === 'availability_update') {
+        // Update SVG section
+        const section = document.querySelector(
+            `g[data-section-id="${data.sectionId}"]`
+        );
+        if (section) {
+            section.setAttribute('data-available', data.availableSeats > 0);
+            if (data.availableSeats === 0) {
+                section.querySelector('path').style.fill = '#555555';
+            }
+        }
+    }
+};
+```
+
+================================================================================
+11. TROUBLESHOOTING
+================================================================================
+
+COMMON ISSUES AND SOLUTIONS:
+─────────────────────────────────────────────────────────────────────────────
+
+ISSUE: SVG sections not clickable
+SOLUTION: 
+  - Ensure SVG is inline (not <img> or background)
+  - Check that g elements have data-section-id attribute
+  - Verify JavaScript is loaded after SVG
+  - Check browser console for errors
+
+ISSUE: Seat shows available but fails to reserve
+SOLUTION:
+  - Race condition - another user reserved it
+  - Use database transactions with row-level locking
+  - Show user-friendly error and refresh availability
+
+ISSUE: Reservations not expiring
+SOLUTION:
+  - Check background job is running
+  - Verify reserved_until field is set correctly
+  - Check server timezone matches database
+
+ISSUE: SVG not rendering on mobile
+SOLUTION:
+  - Set viewBox attribute on SVG
+  - Use responsive container
+  - Test touch events (not just click)
+
+ISSUE: Slow availability loading
+SOLUTION:
+  - Add database indexes
+  - Implement Redis caching
+  - Aggregate at section level, not seat level
+
+ISSUE: Double-booking occurred
+SOLUTION:
+  - Use database transactions with FOR UPDATE lock
+  - Verify seat status before updating
+  - Add unique constraint on sold seats
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================
+
+For questions or support, refer to:
+- SVG Map Editor: venue_map_editor.py in this folder
+- Sample venue maps: *.txt files in this folder
+- Export interactive SVGs using: Batch → Process Entire Folder
+
+QUICK START:
+1. Export your venue maps as interactive SVGs
+2. Upload SVGs to your server
+3. Parse SVG to create database entries
+4. Embed SVG in your event pages
+5. Connect JavaScript to your API
+6. Test the complete flow
+
+Good luck with your integration!
